@@ -49,6 +49,7 @@ public class main {
 			//crcdemo(data, a);
 				
 			
+			
 		} catch (InputMismatchException e) {
 			System.err.println("Bitte auf Dezimalpunkt/komma und Vorzeichen achten.");
 		} catch (Exception e) {
@@ -228,6 +229,20 @@ public class main {
 	}
 	public boolean[][] blocks(boolean[] daten, int length) {
 		boolean[][] out = new boolean[(int) Math.ceil(daten.length/length)][length];
+		int travData = 0;
+		for(int j = 0; travData < daten.length; j++) {
+			for(int i = 0; i < length; i++) {
+				try {
+					out[j][i] = daten[i + travData];
+				} catch(Exception e) {
+					break;
+				}
+				
+			}
+			travData += length;
+
+		}
+		
 		
 		
 		
