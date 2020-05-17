@@ -27,6 +27,7 @@ public class main {
 		
 		
 		try {
+			while(true) { //DEBUG
 			String in = sc.nextLine();
 			boolean[] data = new boolean[in.length()];
 			for(int i = 0; i < in.length(); i++) {
@@ -41,19 +42,32 @@ public class main {
 			}
 			boolean[] crc = {true,false,true,true};
 			
-			System.out.println(binformat(CRC_Parity(data, crc)));
-			System.out.println("Fehlerwahrscheinlichkeit des Kanals (0..1): ");
-			double a = sc.nextDouble();
+			
+			boolean[] tmp = CRC_Parity(data, crc);
+			System.out.println(binformat(tmp));
+			System.out.println(binformat(CRC_Parity_Decode(tmp, crc)));
+			}
+			//System.out.println("Fehlerwahrscheinlichkeit des Kanals (0..1): ");
+			//double a = sc.nextDouble();
 			
 			// auskommentieren für Demonstration der Lösung von Aufgabe P2-1
 			//crcdemo(data, a);
+			/*	
+			if(data.length > 511) { //Blöcke
+				boolean[][] blocks = blocks(data, 512);
+			} else {
 				
+			}*/
 			
 			
 		} catch (InputMismatchException e) {
 			System.err.println("Bitte auf Dezimalpunkt/komma und Vorzeichen achten.");
-		} catch (Exception e) {
-			System.err.println(e.getMessage());
+		} catch (TransmissionError t) {
+			System.err.println("Übertragungsfehler! Angekommene Nachricht: " + t.getMessage());
+		}
+		catch (Exception e) {
+			//System.err.println(e.getMessage());
+			e.printStackTrace();
 		}
 		
 	}
@@ -189,7 +203,7 @@ public class main {
 		boolean[] temp = new boolean[genP.length];
 		boolean[] xorRes = new boolean[genP.length];
 		for(int i = 0; i < daten.length; i++) {
-			crc[i] = daten[daten.length - 1 - i];
+			crc[i] = daten[i];
 		}
 		
 		
@@ -210,16 +224,18 @@ public class main {
 			for(int i = 0; i < genP.length - newBits; i++) {
 				temp[i] = xorRes[i + newBits];
 			}
-			for(int i = genP.length - newBits; i < genP.length; i++,travData++) {
+			for(int i = genP.length - newBits; i < genP.length && travData < crc.length; i++,travData++) {
 				temp[i] = crc[travData];
 			}
 			
 		}
-
+		
+		//generate CRC
 		for(int i = 0; i < genP.length; i++) {
 			xorRes[i] = temp[i] ^ genP[i];
 		}
 		
+		//attach CRC
 		for(int i = 0; i < genP.length - 1; i++) {
 			crc[crc.length - genP.length + 1 + i] = xorRes[i+1];
 		}
@@ -227,7 +243,55 @@ public class main {
 		
 		return crc;
 	}
-	public boolean[][] blocks(boolean[] daten, int length) {
+	
+	public static boolean[] CRC_Parity_Decode(boolean[] daten, boolean[] genP) throws TransmissionError {
+		boolean[] crc = new boolean[daten.length - genP.length + 1];
+		
+		boolean[] temp = new boolean[genP.length];
+		boolean[] xorRes = new boolean[genP.length];
+		for(int i = 0; i < crc.length; i++) {
+			crc[i] = daten[i];
+		}
+		
+		
+		
+		int travData = genP.length;
+		int newBits = 0;
+		
+		//initial
+		for(int i = 0; i < genP.length; i++) {
+			temp[i] = crc[i];
+		}
+		
+		while(travData < crc.length) {
+			for(int i = 0; i < genP.length; i++) {
+				xorRes[i] = temp[i] ^ genP[i];
+			}
+			for(newBits = 0; !xorRes[newBits]; newBits++);
+			for(int i = 0; i < genP.length - newBits; i++) {
+				temp[i] = xorRes[i + newBits];
+			}
+			for(int i = genP.length - newBits; i < genP.length && travData < crc.length; i++,travData++) {
+				temp[i] = crc[travData];
+			}
+			
+		}
+		
+		//generate CRC
+		for(int i = 0; i < genP.length; i++) {
+			xorRes[i] = temp[i] ^ genP[i];
+			
+		}
+		for(int i = genP.length - 1; i < xorRes.length; i++) {
+			if(xorRes[i]) throw new TransmissionError(binformat(xorRes));
+		}
+		
+		
+		
+		return crc;
+	}
+	
+	public static boolean[][] blocks(boolean[] daten, int length) {
 		boolean[][] out = new boolean[(int) Math.ceil(daten.length/length)][length];
 		int travData = 0;
 		for(int j = 0; travData < daten.length; j++) {
@@ -258,6 +322,13 @@ public class main {
 		
 		return r;
 	}
+	
 
 
+}
+
+class TransmissionError extends Exception {
+	TransmissionError(String msg) {
+		super(msg);
+	}
 }
