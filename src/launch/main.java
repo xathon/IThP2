@@ -27,7 +27,7 @@ public class main {
 		
 		
 		try {
-			while(true) { //DEBUG
+			
 			String in = sc.nextLine();
 			boolean[] data = new boolean[in.length()];
 			for(int i = 0; i < in.length(); i++) {
@@ -40,30 +40,50 @@ public class main {
 				}
 				
 			}
-			boolean[] crc = {true,false,true,true};
-			
-			
-			boolean[] tmp = CRC_Parity(data, crc);
-			System.out.println(binformat(tmp));
-			System.out.println(binformat(CRC_Parity_Decode(tmp, crc)));
-			}
-			//System.out.println("Fehlerwahrscheinlichkeit des Kanals (0..1): ");
-			//double a = sc.nextDouble();
+			final boolean[] genP = {true,false,false,false,false,false,true,true,true}; //CRC-8 (ITU-T/ISDN)
+						
+			System.out.println("Fehlerwahrscheinlichkeit des Kanals (0..1): ");
+			double a = sc.nextDouble();
 			
 			// auskommentieren für Demonstration der Lösung von Aufgabe P2-1
 			//crcdemo(data, a);
-			/*	
-			if(data.length > 511) { //Blöcke
-				boolean[][] blocks = blocks(data, 512);
-			} else {
 				
-			}*/
+			if(data.length > 255) { //Maximale Blocklänge, um ein-dreifache und ungerade Fehler zu erkennen ist 2**r-1 -1
+				boolean[][] blocks = blocks(data, 256);
+				for(boolean[] b : blocks) {
+					System.out.println("Generiere CRC...");
+					boolean[] tmp = CRC_Parity(b, genP);
+					System.out.println("Ergebnis: " + binformat(b));
+					System.out.println("Sende über Kanal...");
+					tmp = channel_bsc(a, tmp);
+					TimeUnit.MILLISECONDS.sleep(1000);
+					try {
+						tmp = CRC_Parity_Decode(tmp, genP);
+						System.out.println("Erfolg! Nachricht ohne CRC: " + binformat(tmp));
+					} catch(TransmissionError t) {
+						System.err.println("Übertragungsfehler! Angekommene Nachricht: " + t.getMessage());
+					}
+					
+				}
+			} else {
+				System.out.println("Generiere CRC...");
+				boolean[] tmp = CRC_Parity(data, genP);
+				System.out.println("Ergebnis: " + binformat(tmp));
+				System.out.println("Sende über Kanal...");
+				tmp = channel_bsc(a, tmp);
+				TimeUnit.MILLISECONDS.sleep(1000);
+				try {
+					
+					tmp = CRC_Parity_Decode(tmp, genP);
+					System.out.println("Erfolg! Nachricht ohne CRC: " + binformat(tmp));
+				} catch(TransmissionError t) {
+					System.err.println("Übertragungsfehler! Angekommene Nachricht: " + t.getMessage());
+				}
+			}
 			
 			
 		} catch (InputMismatchException e) {
 			System.err.println("Bitte auf Dezimalpunkt/komma und Vorzeichen achten.");
-		} catch (TransmissionError t) {
-			System.err.println("Übertragungsfehler! Angekommene Nachricht: " + t.getMessage());
 		}
 		catch (Exception e) {
 			//System.err.println(e.getMessage());
@@ -200,7 +220,7 @@ public class main {
 	//(100110001)
 	public static boolean[] CRC_Parity(boolean[] daten, boolean[] genP) {
 		boolean[] crc = new boolean[daten.length + genP.length - 1];
-		boolean[] temp = new boolean[genP.length];
+		boolean[] divident = new boolean[genP.length];
 		boolean[] xorRes = new boolean[genP.length];
 		for(int i = 0; i < daten.length; i++) {
 			crc[i] = daten[i];
@@ -213,26 +233,33 @@ public class main {
 		
 		//initial
 		for(int i = 0; i < genP.length; i++) {
-			temp[i] = crc[i];
+			divident[i] = crc[i];
 		}
 		
 		while(travData < crc.length) {
 			for(int i = 0; i < genP.length; i++) {
-				xorRes[i] = temp[i] ^ genP[i];
+				xorRes[i] = divident[i] ^ genP[i];
 			}
-			for(newBits = 0; !xorRes[newBits]; newBits++);
+			for(newBits = 0; newBits < genP.length && !xorRes[newBits] && travData + newBits < crc.length; newBits++);
+			//shift bits until leading 0es are gone
 			for(int i = 0; i < genP.length - newBits; i++) {
-				temp[i] = xorRes[i + newBits];
+				divident[i] = xorRes[i + newBits];
 			}
 			for(int i = genP.length - newBits; i < genP.length && travData < crc.length; i++,travData++) {
-				temp[i] = crc[travData];
+				divident[i] = crc[travData];
+				if(!divident[0]) i--; 
 			}
 			
 		}
 		
 		//generate CRC
-		for(int i = 0; i < genP.length; i++) {
-			xorRes[i] = temp[i] ^ genP[i];
+		if(divident[0]) {
+			for(int i = 0; i < genP.length; i++) {
+				xorRes[i] = divident[i] ^ genP[i];
+			}
+		
+		} else {
+			xorRes = divident;
 		}
 		
 		//attach CRC
@@ -247,7 +274,7 @@ public class main {
 	public static boolean[] CRC_Parity_Decode(boolean[] daten, boolean[] genP) throws TransmissionError {
 		boolean[] crc = new boolean[daten.length - genP.length + 1];
 		
-		boolean[] temp = new boolean[genP.length];
+		boolean[] divident = new boolean[genP.length];
 		boolean[] xorRes = new boolean[genP.length];
 		for(int i = 0; i < crc.length; i++) {
 			crc[i] = daten[i];
@@ -255,35 +282,43 @@ public class main {
 		
 		
 		
-		int travData = genP.length;
+		int travData = 0;
 		int newBits = 0;
 		
 		//initial
-		for(int i = 0; i < genP.length; i++) {
-			temp[i] = crc[i];
+		for(int i = 0; i < genP.length && travData < daten.length; i++, travData++) {
+			divident[i] = crc[travData];
+			if(!divident[0]) i--;
 		}
 		
-		while(travData < crc.length) {
+		while(travData < daten.length) {
 			for(int i = 0; i < genP.length; i++) {
-				xorRes[i] = temp[i] ^ genP[i];
+				xorRes[i] = divident[i] ^ genP[i];
 			}
-			for(newBits = 0; !xorRes[newBits]; newBits++);
+			for(newBits = 0; newBits < genP.length && !xorRes[newBits] && travData + newBits < daten.length; newBits++);
+			//shift bits until leading 0es are gone
 			for(int i = 0; i < genP.length - newBits; i++) {
-				temp[i] = xorRes[i + newBits];
+				divident[i] = xorRes[i + newBits];
 			}
-			for(int i = genP.length - newBits; i < genP.length && travData < crc.length; i++,travData++) {
-				temp[i] = crc[travData];
+			for(int i = genP.length - newBits; i < genP.length && travData < daten.length; i++,travData++) {
+				divident[i] = daten[travData];
+				if(!divident[0]) i--; 
 			}
 			
 		}
 		
 		//generate CRC
-		for(int i = 0; i < genP.length; i++) {
-			xorRes[i] = temp[i] ^ genP[i];
-			
+		if(divident[0]) {
+			for(int i = 0; i < genP.length; i++) {
+				xorRes[i] = divident[i] ^ genP[i];
+			}
+		
+		} else {
+			xorRes = divident;
 		}
+			
 		for(int i = genP.length - 1; i < xorRes.length; i++) {
-			if(xorRes[i]) throw new TransmissionError(binformat(xorRes));
+			if(xorRes[i]) throw new TransmissionError(binformat(daten));
 		}
 		
 		
